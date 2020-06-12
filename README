@@ -1,0 +1,148 @@
+zerohid - use Pi Zero as a serial-to-HID-keyboard converter.
+
+You will need a serial adaptor such as
+https://www.amazon.com/dp/B07D9R5JFK/ref=cm_sw_em_r_mt_dp_U_ezv3Eb8GSKWX0 to be
+attached to pins 6 (GND), 8 (TXD) and 10 (RXD) on the Pi's GPIO header.
+
+These instructions assume you have root on a linux PC. You will also need a USB
+ethernet dongle to perform the initial Pi configuration. Most dongles should
+work fine, but see https://elinux.org/RPi_USB_Ethernet_adapters for more
+information.
+
+Download Raspian Lite image:
+
+    # wget https://downloads.raspberrypi.org/raspbian_lite/images/raspbian_lite-2020-02-14/2020-02-13-raspbian-buster-lite.zip
+    # unzip 2020-02-13-raspbian-buster-lite.zip
+
+Insert an MMC device into the PC, determine how the kernel enumerates it.
+
+    # dmesg
+
+        ...
+        [2836650.579139] sd 6:0:0:0: [sdb] 62676992 512-byte logical blocks: (32.1 GB/29.9 GiB)
+        [2836650.585912]  sdb: sdb1 sdb2
+
+In this example, the devce of interest is /dev/sdb.
+
+Install the image to the MMC:
+
+    # dd if=2020-02-13-raspbian-buster-lite.img of=/dev/XXX bs=4M conv=fsync
+
+Enable first-time SSH:
+
+    # mkdir xxx (any random temp directory name)
+    # mount /dev/sdb1 xxxr
+    # touch xxx/ssh
+    # umount xxx
+    # rmdir xxx
+
+Insert the MMC into Pi Zero. Attach the USB OTG adapter with ethernet dongle,
+and 5 volt power. Make sure the dongle is connected to ethernet (and note the
+subnet must have a functioning DHCP server).
+
+First time boot for Pi is about two minutes.
+
+Use the sscan utility (in this repo) to identify the Pi's IP address:
+
+    # ./sscan
+    Scanning 192.168.0.0/23 for open ssh ports...
+    192.168.0.5   : SSH-2.0-OpenSSH_7.4p1 Debian-10+deb9u7
+    192.168.0.3   : SSH-2.0-OpenSSH_7.6
+    192.168.1.209 : SSH-2.0-OpenSSH_7.9p1 Raspbian-10+deb10u2  <- there it is
+
+    # ssh pi@192.168.1.209
+
+The password is "raspberry". You can change this if desired, but since the Pi
+won't be attached to a network for normal HID operation it's not strictly
+required.
+
+On the Pi:
+
+    $ sudo su -
+    # systemctl enable ssh                                              <- So you can ssh in again if necessary
+    # printf "dtoverlay=dwc2\nenable_uart=1\n" >> /boot/config.txt      <- Enable OTG and uart
+    # systemctl mask serial-getty@ttyS0.service                         <- Disable serial login
+    # apt install git
+    # git clone https://github.com/glitchub/zerohid                     <- Install this repo to /root/zerohid
+    # make -C zerohid                                                   <- Build the zerohid binary
+    # ln -sf /root/zerohid/zerohid.service /lib/systemd/system          <- Start zerohid at boot
+    # systemctl enable zerohid.service
+    # reboot
+
+Wait for the Pi to reboot and ssh in again.
+
+Check that the zerohid service started correctly:
+
+    $ systemctl status zerohid
+    ● zerohid.service - Zerohid
+       Loaded: loaded (/root/zerohid/zerohid.service; enabled; vendor preset: enabled)
+       Active: active (running) since Fri 2020-06-12 20:51:02 BST; 2min ago
+     Main PID: 250 (zerohid)
+       Memory: 1.4M
+       CGroup: /system.slice/zerohid.service
+	       └─250 /root/zerohid/zerohid -a -d /dev/hidg0
+
+    Jun 12 20:51:02 raspberrypi systemd[1]: Started Zerohid.
+    Jun 12 20:51:02 raspberrypi zerohid.sh[250]: Running '/root/zerohid/hid.sh'
+    Jun 12 20:51:04 raspberrypi zerohid.sh[250]: /sys/kernel/config/usb_gadget/zerohid has been installed
+    Jun 12 20:51:04 raspberrypi zerohid.sh[250]: Running '/root/zerohid/zerohid -a -d /dev/hidg0 </dev/ttyS0 >/dev/ttyS0'
+
+Attach the serial adaptor's ground to Pi's GPIO header pin 6, receive data to
+pin 8, transmit data to pin 10. (Typically black is ground, green is transmit,
+and white is receive, but of course your cable may be different. Never connect
+the adaptor's (red?) 5V line.)
+
+Attach the serial adaptor USB to your PC, determine how the kernel enumerated
+it:
+
+    $ sudo dmesg | tail
+    [3121332.136870] usb 2-1.5.4: new full-speed USB device number 68 using ehci-pci
+    [3121332.246195] usb 2-1.5.4: New USB device found, idVendor=067b, idProduct=2303
+    [3121332.246202] usb 2-1.5.4: New USB device strings: Mfr=1, Product=2, SerialNumber=0
+    [3121332.246206] usb 2-1.5.4: Product: USB-Serial Controller
+    [3121332.246209] usb 2-1.5.4: Manufacturer: Prolific Technology Inc.
+    [3121332.246631] pl2303 2-1.5.4:1.0: pl2303 converter detected
+    [3121332.248327] usb 2-1.5.4: pl2303 converter now attached to ttyUSB0
+
+Use a terminal emulator (minicom, nanocom, screen, etc) to attach to the
+designated tty device, note the baud rate must be set to 115200 N-8-1.
+
+In the terminal emulator, press enter and you should see something like:
+
+    ascii 0A => 0028
+    hid timeout
+
+This indicates that zerohid received the enter key on the serial port (0x0A)
+and mapped it to key scan code 0x28. But the write to the HID device timed out
+because the Pi is not actually connected to a USB host (because it IS the host,
+since you have it attached to the ethernet dongle).
+
+Disconnect power and the OTG adaptor/ethernet dongle from the Pi.
+
+Attach Pi's USB port directly to the target system (which will see Pi as a
+keyboard). The Pi is powered by the target.
+
+DO NOT use the PC that is running the terminal emulator as the target system or
+you'll end up with a recursive keyboard spiral of death.
+
+In the terminal emulator, you should see kernel messages as Pi boots and after
+about 20 seconds you'll see:
+
+    Starting zerohid in ascii mode
+
+Press enter and you should see:
+
+    ascii 0A => 0028
+
+I.E. as above, but without the hid timeout.
+
+The key presses will affect the target system as if you were typing directly on
+its keyboard. However be aware that function keys and cursor control escape
+sequences may not map to the target system correctly, depending on how its TERM
+is set.
+
+Zerohid is good to go. In normal use zero hid is "write only", the receive
+data line (white wire) should be left disconnected to avoid issues with serial
+receive buffer overflow on the source device.
+
+You can also edit zerohid.sh and set 'debug=no'.

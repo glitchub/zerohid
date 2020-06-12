@@ -1,0 +1,6 @@
+[Unit]
+Description=Zerohid
+[Service]
+ExecStart=/root/zerohid/zerohid.sh
+[Install]
+WantedBy=multi-user.target
