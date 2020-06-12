@@ -1,13 +1,21 @@
 zerohid - use Pi Zero as a serial-to-HID-keyboard converter.
 
-You will need a serial adaptor such as
-https://www.amazon.com/dp/B07D9R5JFK/ref=cm_sw_em_r_mt_dp_U_ezv3Eb8GSKWX0 to be
-attached to pins 6 (GND), 8 (TXD) and 10 (RXD) on the Pi's GPIO header.
+Zerohid makes use of the Pi's serial port on GPIO header pins 6 (GND), 8 (TXD)
+and 10 (RXD), so those three pins at least must be accessible for external
+connection.
 
-These instructions assume you have root on a linux PC. You will also need a USB
-ethernet dongle to perform the initial Pi configuration. Most dongles should
-work fine, but see https://elinux.org/RPi_USB_Ethernet_adapters for more
-information.
+In normal operation the Pi may be direct wired to the TTL serial port of a host device, or
+connected via a USB serial adaptor such as
+https://www.amazon.com/dp/B07D9R5JFK/ref=cm_sw_em_r_mt_dp_U_ezv3Eb8GSKWX0 to a
+host PC. It will not have network access.
+
+To install, you'll need a USB ethernet dongle attached to the Pi via an
+OTG adapter. Most dongles should work fine, but see
+https://elinux.org/RPi_USB_Ethernet_adapters for more information. The dongle
+must attach to a LAN that provides DHCP and internet access.
+
+These instructions assume you are root on a linux PC, and are using a USB
+serial dongle to test the serial connection.
 
 Download Raspian Lite image:
 
@@ -16,29 +24,30 @@ Download Raspian Lite image:
 
 Insert an MMC device into the PC, determine how the kernel enumerates it.
 
-    # dmesg
-
+    # dmesg | tail
         ...
         [2836650.579139] sd 6:0:0:0: [sdb] 62676992 512-byte logical blocks: (32.1 GB/29.9 GiB)
         [2836650.585912]  sdb: sdb1 sdb2
 
-In this example, the devce of interest is /dev/sdb.
+Ignore any existing partitions, in this example the device of interest is /dev/sdb.
 
 Install the image to the MMC:
 
-    # dd if=2020-02-13-raspbian-buster-lite.img of=/dev/XXX bs=4M conv=fsync
+    # dd if=2020-02-13-raspbian-buster-lite.img of=/dev/xxx bs=4M conv=fsync        <- replace xxx with your device
 
-Enable first-time SSH:
+Remove the MMC then re-insert it so the kernel reads the partition table.
 
-    # mkdir xxx (any random temp directory name)
-    # mount /dev/sdb1 xxxr
-    # touch xxx/ssh
-    # umount xxx
-    # rmdir xxx
+Mount partition 1 and create an 'ssh' file to enable first-time SSH (in this
+example, the partition will be sdb1):
 
-Insert the MMC into Pi Zero. Attach the USB OTG adapter with ethernet dongle,
-and 5 volt power. Make sure the dongle is connected to ethernet (and note the
-subnet must have a functioning DHCP server).
+    # mkdir tempdir                 <- a random temp directory
+    # mount /dev/xxx1 tempdir       <- replace xxx with your device
+    # touch tempdir/ssh
+    # umount tempdir
+    # rmdir tempdir
+
+Remove the MMC from the PC and insert into Zero. Attach the USB OTG
+adapter/ethernet dongle, and 5 volt power.
 
 First time boot for Pi is about two minutes.
 
@@ -53,14 +62,14 @@ Use the sscan utility (in this repo) to identify the Pi's IP address:
     # ssh pi@192.168.1.209
 
 The password is "raspberry". You can change this if desired, but since the Pi
-won't be attached to a network for normal HID operation it's not strictly
-required.
+won't be attached to a network for normal operation it's not strictly required.
 
 On the Pi:
 
     $ sudo su -
     # systemctl enable ssh                                              <- So you can ssh in again if necessary
-    # printf "dtoverlay=dwc2\nenable_uart=1\n" >> /boot/config.txt      <- Enable OTG and uart
+    # echo "dtoverlay=dwc2" >> /boot/config.txt                         <- Enable USB gadgets
+    # echo "enable_uart=1" >> /boot/config.txt                          <- Enable uart
     # systemctl mask serial-getty@ttyS0.service                         <- Disable serial login
     # apt install git
     # git clone https://github.com/glitchub/zerohid                     <- Install this repo to /root/zerohid
@@ -141,8 +150,6 @@ its keyboard. However be aware that function keys and cursor control escape
 sequences may not map to the target system correctly, depending on how its TERM
 is set.
 
-Zerohid is good to go. In normal use zero hid is "write only", the receive
-data line (white wire) should be left disconnected to avoid issues with serial
-receive buffer overflow on the source device.
-
-You can also edit zerohid.sh and set 'debug=no'.
+Zerohid is ready to go. In normal use it's "write only", and the Pi's TXD
+signal should be left disconnected to avoid issues with serial receive buffer
+overflow on the source device.
