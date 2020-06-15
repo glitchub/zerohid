@@ -1,4 +1,7 @@
 #!/usr/bin/python
+# Scan one or more subnets for open SSH ports. Subnets can be specified in CIDR
+# format on the command line, otherwise attempts to identify locally attached
+# subnets (on linux or windows) and scans those.
 
 import sys, struct, socket, threading, time, subprocess, platform, traceback
 
