@@ -443,7 +443,7 @@ int main(int argc, char *argv[])
 
         if (s[0] == '+' || s[0] == '-' || s[0] == '!')
         {
-            // key event
+            // Key event
             static uint8_t report[8] = {0}; // last sent report
             if (s[0] == '!')
             {
@@ -451,8 +451,9 @@ int main(int argc, char *argv[])
                 memset(report, 0, sizeof report);
             } else
             {
-                uint16_t key; char junk;
-                if (sscanf(s+1, "%hu %c", &key, &junk) != 1) goto invalid;
+                uint16_t key;
+                int n;
+                if (sscanf(s+1, "%hu %n", &key, &n) != 1 || s[n+1]) goto invalid;
 
                 uint16_t scan = x2scan(key);
                 debug("xkb %d => %d\n", key, scan);
@@ -510,15 +511,16 @@ int main(int argc, char *argv[])
         }
         else if (s[0] >= '0' && s[0] <= '7')
         {
-            // mouse event, code is 3-bit button state, payload is decimal-encoded X, Y and wheel
+            // Mouse event, code is the 3-bit button state.
+            // Payload is decimal-encoded absolute X 0-32765, Y 0-32765, and (optional) relative wheel -127 to +127.
             if (!mouse) debug("xkb ignore mouse event\n");
             uint16_t X, Y;
-            int8_t W;
-            char junk;
-            if (sscanf(s+1, "%hu %hu %hhd %c", &X, &Y, &W, &junk) != 3) goto invalid;
-            if (X > 32767 || Y > 32767 || W < -127) goto invalid;
-            debug("xkb mouse buttons=%c X=%d Y=%d W=%d\n", s[0], X, Y, W);
-            write_hid(mouse, (uint8_t []){s[0]-'0', X >> 8, X & 255, Y >> 8, Y & 255, W}, 6);
+            int8_t W = 0;
+            int n;
+            int r = sscanf(s+1, "%hu %hu %n %hhd %n", &X, &Y, &n, &W, &n);
+            if (r < 2 || r > 3 || X > 32767 || Y > 32767 || W < -127 || s[n+1]) goto invalid;
+            debug("xkb mouse buttons=%c X=%u Y=%u W=%d\n", s[0], X, Y, W);
+            write_hid(mouse, (uint8_t []){s[0]-'0', X & 255, X >> 8, Y & 255, Y >> 8, W}, 6); // little endian!
         }
         else
         {
