@@ -408,7 +408,7 @@ int main(int argc, char *argv[])
     int mouse = 0;
     if (argc == 3)
     {
-        int mouse = open(argv[2], O_RDWR|O_NONBLOCK);
+        mouse = open(argv[2], O_RDWR|O_NONBLOCK);
         if (mouse <= 0) die("Can't open %s: %s\n", argv[2], strerror(errno));
     }
 
