@@ -5,26 +5,26 @@
 #define usage() die("\
 Usage:\n\
 \n\
-    zerohid [options] /dev/hidX\n\
+    zerohid [options] /dev/hidX [/dev/hidX]\n\
 \n\
 Read key events from stdin and write reports to specified OTG HID device.\n\
 Supports XKB mode and ASCII mode.\n\
 \n\
-If XKB mode, input lines are read from stdin, in the form \"EXXXX\\n\" where E is\n\
-an event code and XXXX is a hex-encoded XKB keysym, these are converted to HID\n\
-key codes.\n\
+In XKB mode, keyboard and mouse events are read from stdin, one per line,\n\
+and converted to HID key or mouse codes. Key codes are sent to the first\n\
+specified HID device, mouse codes to the second device (if given).\n\
 \n\
 In ASCII mode, individual characters are read from stdin and converted to HID\n\
 key codes.\n\
 \n\
-XKB mode is the default, if an empty line is received it will switch to ASCII\n\
-mode (but there's no way back).\n\
+By default, starts in XKB mode and if an empty line is received switch to ASCII\n\
+mode.\n\
 \n\
 Options are:\n\
 \n\
     -a      - start in ASCII mode\n\
     -d      - write debug messages to stdout\n\
-    -x      - start in XKB mode and disable switch to ASCII mode\n\
+    -x      - start in XKB mode, disable switch to ASCII mode\n\
 ")
 
 #include <errno.h>
@@ -73,33 +73,36 @@ uint32_t mS(void)
     return ((uint32_t)t.tv_sec*1000) + (t.tv_nsec/1000000);
 }
 
-// write 8 byte hid report to hid device, return 0 on success, -1 if blocked for one second. Die if error
-int write_hid(int hid, uint8_t *report)
+// write report of specified size to hid file descriptor. Return 0 on success, -1 if blocked for one second, die if error
+int write_hid(int hid, uint8_t *report, int size)
 {
-    int remaining = 8;
     uint32_t start = mS();
 
-    while (remaining)
+    while (size > 0)
     {
-        int sent = write(hid, report, remaining);
+        int sent = write(hid, report, size);
         if (sent > 0)
         {
             report += sent;
-            remaining -= sent;
+            size -= sent;
         } else
         {
             expect(errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR);
-            if (mS() - start > 1000) return -1; // timeout
-            sched_yield(); // don't be a hog
+            if (mS() - start > 1000)
+            {
+                debug("hid timeout\n");
+                return -1;
+            }
+            sched_yield();
         }
     }
     return 0;
 }
 
-// Given ASCII character return 16-bit hid key, upper byte is modifier bit or 0, lower byte is the scan code or 0
+// Given ASCII character return 16-bit scan code, upper byte is modifier bit or 0, lower byte is the scan code or 0
 #define shift(c) ( ((uint16_t)HID_LSHIFT<<8) | (c))
 #define control(c) ( ((uint16_t)HID_LCTRL<<8) | (c))
-uint16_t a2hk(uint8_t key)
+uint16_t a2scan(uint8_t key)
 {
     switch(key)
     {
@@ -236,8 +239,8 @@ uint16_t a2hk(uint8_t key)
     }
 };
 
-// Given xkb code return 16-bit hid key, upper byte is modifer bit or 0, lower byte is scan code or 0
-uint16_t x2hk(uint16_t key)
+// Given xkb code return 16-bit scan code, upper byte is modifer bit or 0, lower byte is scan code or 0
+uint16_t x2scan(uint16_t key)
 {
     switch(key)
     {
@@ -365,7 +368,7 @@ uint8_t readchar(void)
 
 // Read a '\n'-terminated line from stdin to given buffer, possibly truncated at specified len-1 (but always 0-terminated).
 // Non-printable chars are ignored, returns size of string 0 to len-1
-int readline(uint8_t *s, int len)
+int readline(char *s, int len)
 {
     int n = 0;
     while(true)
@@ -395,12 +398,19 @@ int main(int argc, char *argv[])
     } optx:
     argc -= (optind-1);
     argv += (optind-1);
-    if (argc != 2) usage();
+    if (argc < 2 || argc > 3) usage();
 
     debug("Starting zerohid in %s mode\n", (mode==0)?"auto":(mode==1)?"xkb":"ascii");
 
-    int hid = open(argv[1], O_RDWR|O_NONBLOCK);
-    if (hid <= 0) die("Can't open %s: %s\n", argv[1], strerror(errno));
+    int keyboard = open(argv[1], O_RDWR|O_NONBLOCK);
+    if (keyboard <= 0) die("Can't open %s: %s\n", argv[1], strerror(errno));
+
+    int mouse = 0;
+    if (argc == 3)
+    {
+        mouse = open(argv[2], O_RDWR|O_NONBLOCK);
+        if (mouse <= 0) die("Can't open %s: %s\n", argv[2], strerror(errno));
+    }
 
     if (isatty(0))
     {
@@ -417,24 +427,102 @@ int main(int argc, char *argv[])
 
     if (mode < 2) while(true)
     {
-        // The input is text, one key event per line in form "EX\n" where E ==
-        // "+" indicates key press, E == "-" indicates key release, and "X"
-        // is the X11 key code in hex.
-        uint8_t s[32];
+        // The input is text, one event per line
+        char s[32];
         int got = readline(s, sizeof s);
         if (got == 0) // empty line?
         {
             if (mode)
-                debug("xkb null input\n");
-            else
             {
-                debug("xkb switch to ascii\n");
-                break;  // break to the ascii loop below
+                debug("xkb ignore null input\n");
+                continue;
             }
-            continue;
+            debug("xkb switch to ascii\n");
+            break;  // break to the ascii loop below
         }
 
-        if (got < 2 || got > 5)
+        if (s[0] == '+' || s[0] == '-' || s[0] == '!')
+        {
+            static uint8_t report[8] = {0}; // last sent report
+            if (s[0] == '!')
+            {
+                debug("xkb reset\n");
+                memset(report, 0, sizeof report);
+            } else
+            {
+                // payload is a decimal X key sym
+                uint16_t key;
+                int n;
+                if (sscanf(s+1, "%hu %n", &key, &n) != 1 || s[n+1]) goto invalid;
+
+                uint16_t scan = x2scan(key);
+                debug("xkb %d => %d\n", key, scan);
+                if (!scan) continue; // nothing to do!
+                if (s[0] == '+')
+                {
+                    // key pressed
+                    if (scan > 255)
+                        // Set modifier bit
+                        report[0] |= scan >> 8;
+                    else
+                    {
+                        // Add key to first empty report slot
+                        int slot = 2;
+                        for (; slot < sizeof report; slot++)
+                        {
+                            if (report[slot] == (scan & 0xff)) break; // already there!
+                            if (!report[slot])                        // empty slot
+                            {
+                                report[slot] = scan & 0xff;           // install the code and break
+                                break;
+                            }
+                        }
+                        if (slot == sizeof report)
+                        {
+                            // oops, send overflow in all slots
+                            debug("xkb overflow!\n");
+                            write_hid(keyboard, (uint8_t[]){report[0], 0, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF}, 8);
+                            continue;
+                        }
+                    }
+                } else
+                {
+                    // Key released
+                    if (scan > 255)
+                        // Reset modifier bit
+                        report[0] &= ~(scan >> 8);
+                    else
+                    {
+                        // Delete scancode from report
+                        bool del = false;
+                        for (int slot = 2; slot < sizeof report; slot++)
+                        {
+                            if (del) report[slot-1] = report[slot];             // deleting, shift code left one slot
+                            else del = (report[slot] == (scan & 0xff));         // not deleting, start at matching code
+                        }
+                        if (del) report[7] = 0;                                 // always delete last slot
+                    }
+                }
+            }
+            // send key report
+            write_hid(keyboard, report, 8);
+        }
+        else if (s[0] >= '0' && s[0] <= '7')
+        {
+            // Mouse event, code is the 3-bit button state. Payload is:
+            //   "XXXXX YYYYY [-]WWW"
+            // Decimal-encoded absolute X 0-32765, Y 0-32765, relative wheel
+            // -127 to +127.
+            if (!mouse) debug("xkb ignore mouse event\n");
+            uint16_t X, Y;
+            int8_t W = 0;
+            int n;
+            int r = sscanf(s+1, "%hu %hu %hhd %n", &X, &Y, &W, &n);
+            if (r != 3 || X > 32767 || Y > 32767 || W < -127 || s[n+1]) goto invalid;
+            debug("xkb mouse buttons=%c X=%u Y=%u W=%d\n", s[0], X, Y, W);
+            write_hid(mouse, (uint8_t []){s[0]-'0', X & 255, X >> 8, Y & 255, Y >> 8, W}, 6); // little endian!
+        }
+        else
         {
             invalid:
             if (dodebug)
@@ -444,68 +532,16 @@ int main(int argc, char *argv[])
                 for (int i = 0; i < got; i++) fprintf(stderr," %02X", s[i]);
                 fprintf(stderr, "\n");
             }
-            continue;
-        }
-
-        // first char is the event type
-        bool pressed;
-        switch(s[0])
-        {
-            case '+': pressed = true; break;
-            case '-': pressed = false; break;
-            // XXX handle mouse events here
-            default: goto invalid;
-        }
-
-        char *end;
-        uint16_t k = strtoul((char *)s+1, &end, 16);
-        if (*end) goto invalid;
-
-        uint16_t hk = x2hk(k);
-        debug("xkb %04X => %04X\n", k, hk);
-        if (hk)
-        {
-            static uint8_t report[8] = {0}; // latest HID report, first byte is modifier
-            if (pressed)
-            {
-                if (hk > 255)
-                    // Set modifier bit
-                    report[0] |= hk >> 8;
-                else
-                {
-                    // Add key to report, if not already there
-                    // But if all slots are full then the key is discarded
-                    int avail = 0;
-                    for (int i = 2; i < sizeof(report); i++)
-                    {
-                        if (!avail && !report[i]) avail = i; // remember first zero slot
-                        if (report[i] == (hk & 0xff)) { avail = 0; break; }
-                    }
-                    if (avail) report[avail] = hk & 0xff;
-                }
-            } else
-            {
-                if (hk > 255)
-                    // Reset modifier bit
-                    report[0] &= ~(hk >> 8);
-                else
-                    // Remove scancode from report
-                    for (int i = 2; i < sizeof(report); i++)
-                        if (report[i] == (hk & 0xff)) report[i] = 0;
-            }
-            // send key report
-            if (write_hid(hid, report)) debug("hid timeout\n");
         }
     }
 
     // Here, input is raw ASCII chars
     while (true)
     {
-        uint8_t k = readchar();
-        uint16_t hk = a2hk(k);
-        debug("ascii %02X => %04X\n", k, hk);
-        if (write_hid(hid, (uint8_t[]){hk >> 8, 0, hk & 0xff, 0, 0, 0, 0, 0}) ||
-            write_hid(hid, (uint8_t[]){0, 0, 0, 0, 0, 0, 0, 0}))
-                debug("hid timeout\n");
+        uint8_t key = readchar();
+        uint16_t scan = a2scan(key);
+        debug("ascii %02X => %04X\n", key, scan);
+        if (!write_hid(keyboard, (uint8_t[]){scan >> 8, 0, scan & 0xff, 0, 0, 0, 0, 0}, 8))   // press
+            write_hid(keyboard, (uint8_t[]){0, 0, 0, 0, 0, 0, 0, 0}, 8);                      // release
     }
 }

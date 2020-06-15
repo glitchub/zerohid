@@ -32,7 +32,10 @@ while getopts ":mnu" c; do case $c in
 esac; done
 
 
-# Keyboard report descriptor
+# Keyboard report descriptor, a report is 8 bytes:
+#   Mod Zero K1 K2 K3 K4 K5 K6
+# Where mod is 8 modifier key bits and Kx is a pressed HID key code (up to 6 at
+# once)
 keyboard=(
     05 01        # USAGE_PAGE (Generic Desktop)
     09 06        # USAGE (Keyboard)
@@ -48,15 +51,15 @@ keyboard=(
     95 01        #     REPORT_COUNT (1)
     75 08        #     REPORT_SIZE (8)
     81 03        #     INPUT (Cnst,Var,Abs)
-    95 05        #     REPORT_COUNT (5)
-    75 01        #     REPORT_SIZE (1)
-    05 08        #     USAGE_PAGE (LEDs)
-    19 01        #     USAGE_MINIMUM (Num Lock)
-    29 05        #     USAGE_MAXIMUM (Kana)
-    91 02        #     OUTPUT (Data,Var,Abs)
-    95 01        #     REPORT_COUNT (1)
-    75 03        #     REPORT_SIZE (3)
-    91 03        #     OUTPUT (Cnst,Var,Abs)
+#   95 05        #     REPORT_COUNT (5)
+#   75 01        #     REPORT_SIZE (1)
+#   05 08        #     USAGE_PAGE (LEDs)
+#   19 01        #     USAGE_MINIMUM (Num Lock)
+#   29 05        #     USAGE_MAXIMUM (Kana)
+#   91 02        #     OUTPUT (Data,Var,Abs)
+#   95 01        #     REPORT_COUNT (1)
+#   75 03        #     REPORT_SIZE (3)
+#   91 03        #     OUTPUT (Cnst,Var,Abs)
     95 06        #     REPORT_COUNT (6)
     75 08        #     REPORT_SIZE (8)
     15 00        #     LOGICAL_MINIMUM (0)
@@ -72,9 +75,9 @@ keyboard=(
 mouse=(
     05 01        # USAGE_PAGE (Generic Desktop)
     09 02        # USAGE (Mouse)
-    a1 01        # COLLECTION (Application)
+    a1 01        #   COLLECTION (Application)
     09 01        #   USAGE (Pointer)
-    a1 00        #   COLLECTION (Physical)
+    a1 00        #     COLLECTION (Physical)
     05 09        #     USAGE_PAGE (Button)
     19 01        #     USAGE_MINIMUM (Button 1)
     29 03        #     USAGE_MAXIMUM (Button 3)
@@ -89,10 +92,16 @@ mouse=(
     05 01        #     USAGE_PAGE (Generic Desktop)
     09 30        #     USAGE (X)
     09 31        #     USAGE (Y)
+    15 00        #     LOGICAL_MINIMUM (0)
+    26 ff 7f     #     LOGICAL_MAXIMUM (32767)
+    75 10        #     REPORT_SIZE (16)
+    95 02        #     REPORT_COUNT (2)
+    81 02        #     INPUT (Data,Var,Abs)
+    09 38        #     USAGE (Wheel)
     15 81        #     LOGICAL_MINIMUM (-127)
     25 7f        #     LOGICAL_MAXIMUM (127)
     75 08        #     REPORT_SIZE (8)
-    95 02        #     REPORT_COUNT (2)
+    95 01        #     REPORT_COUNT (1)
     81 06        #     INPUT (Data,Var,Rel)
     c0           #   END_COLLECTION
     c0           # END_COLLECTION
@@ -157,7 +166,7 @@ if ((domouse)); then
     mkdir -p ${function}1
     echo 1 > ${function}1/subclass
     echo 1 > ${function}1/protocol
-    echo 3 > ${function}1/report_length # 3 byte reports
+    echo 6 > ${function}1/report_length # 6 byte reports
     printf $(printf '\\x%s' ${mouse[@]}) > ${function}1/report_desc
     ln -s ${function}1 $config
 fi

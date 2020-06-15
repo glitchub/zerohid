@@ -1,6 +1,8 @@
-// USB HID key codes, note this is QWERTY only
+// USB HID key scan codes for 101-key keyboards only. The names are
+// QWERTY-centric even though scan codes don't care about the labels on the key
+// caps.
 
-// modifer bits
+// modifer bits, in the 'mod' byte
 #define HID_LCTRL  0x01
 #define HID_LSHIFT 0x02
 #define HID_LALT   0x04
@@ -10,7 +12,9 @@
 #define HID_RALT   0x40
 #define HID_RSUPER 0x80
 
-// keyboard key codes
+// report in all slots if too many keys pressed
+#define HID_OVF 0x01
+
 #define HID_A 0x04
 #define HID_B 0x05
 #define HID_C 0x06
@@ -97,7 +101,6 @@
 
 #define HID_NUMLOCK 0x53
 
-// keypad key codes
 #define HID_KPSLASH 0x54
 #define HID_KPASTERISK 0x55
 #define HID_KPMINUS 0x56
