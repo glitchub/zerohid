@@ -18,7 +18,7 @@ The keyboard device will be at /dev/hidg0, mouse at /dev/hidg1.
 The host view of hid devices is at /sys/kernel/debug/hid/x:x:x:x/rdesc."
 }
 
-Also see https://www.kernel.org/doc/Documentation/usb/gadget_configfs.txt
+# Also see https://www.kernel.org/doc/Documentation/usb/gadget_configfs.txt
 
 domouse=0
 
