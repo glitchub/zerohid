@@ -107,7 +107,7 @@ mouse=(
     c0           # END_COLLECTION
 )
 
-(UID)) && die "Must be root!"
+((UID)) && die "Must be root!"
 
 gadget=/sys/kernel/config/usb_gadget/zerohid
 config=$gadget/configs/c.1
