@@ -443,7 +443,6 @@ int main(int argc, char *argv[])
 
         if (s[0] == '+' || s[0] == '-' || s[0] == '!')
         {
-            // Key event
             static uint8_t report[8] = {0}; // last sent report
             if (s[0] == '!')
             {
@@ -451,58 +450,57 @@ int main(int argc, char *argv[])
                 memset(report, 0, sizeof report);
             } else
             {
+                // payload is a decimal X key sym
                 uint16_t key;
                 int n;
                 if (sscanf(s+1, "%hu %n", &key, &n) != 1 || s[n+1]) goto invalid;
 
                 uint16_t scan = x2scan(key);
                 debug("xkb %d => %d\n", key, scan);
-                if (scan)
+                if (!scan) continue; // nothing to do!
+                if (s[0] == '+')
                 {
-                    if (s[0] == '+')
+                    // key pressed
+                    if (scan > 255)
+                        // Set modifier bit
+                        report[0] |= scan >> 8;
+                    else
                     {
-                        // key pressed
-                        if (scan > 255)
-                            // Set modifier bit
-                            report[0] |= scan >> 8;
-                        else
+                        // Add key to first empty report slot
+                        int slot = 2;
+                        for (; slot < sizeof report; slot++)
                         {
-                            // Add key to first empty report slot, if not already there
-                            int slot = 2;
-                            for (; slot < sizeof(report); slot++)
+                            if (report[slot] == (scan & 0xff)) break; // already there!
+                            if (!report[slot])                        // empty slot
                             {
-                                if (!report[slot])
-                                {
-                                    report[slot] = scan & 0xff;
-                                    break;
-                                }
-                                if (report[slot] == (scan & 0xff)) break;
-                            }
-                            if (slot == sizeof report)
-                            {
-                                // oops, send overflow in all slots
-                                debug("xkb overflow!\n");
-                                write_hid(keyboard, (uint8_t[]){report[0], 0, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF}, 8);
-                                continue;
+                                report[slot] = scan & 0xff;           // install the code and break
+                                break;
                             }
                         }
-                    } else
-                    {
-                        // key released
-                        if (scan > 255)
-                            // Reset modifier bit
-                            report[0] &= ~(scan >> 8);
-                        else
+                        if (slot == sizeof report)
                         {
-                            // Delete scancode from report, if it's there
-                            bool del = false;
-                            for (int i = 2; i < sizeof(report); i++)
-                            {
-                                if (del) report[i-1] = report[i]; // shift remaining scan codes over
-                                else if (report[i] == (scan & 0xff)) del = true;
-                            }
-                            if (del) report[7] = 0;
+                            // oops, send overflow in all slots
+                            debug("xkb overflow!\n");
+                            write_hid(keyboard, (uint8_t[]){report[0], 0, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF, HID_OVF}, 8);
+                            continue;
                         }
+                    }
+                } else
+                {
+                    // Key released
+                    if (scan > 255)
+                        // Reset modifier bit
+                        report[0] &= ~(scan >> 8);
+                    else
+                    {
+                        // Delete scancode from report
+                        bool del = false;
+                        for (int slot = 2; slot < sizeof report; slot++)
+                        {
+                            if (del) report[slot-1] = report[slot];             // deleting, shift code left one slot
+                            else del = (report[slot] == (scan & 0xff));         // not deleting, start at matching code
+                        }
+                        if (del) report[7] = 0;                                 // always delete last slot
                     }
                 }
             }
@@ -511,14 +509,16 @@ int main(int argc, char *argv[])
         }
         else if (s[0] >= '0' && s[0] <= '7')
         {
-            // Mouse event, code is the 3-bit button state.
-            // Payload is decimal-encoded absolute X 0-32765, Y 0-32765, and (optional) relative wheel -127 to +127.
+            // Mouse event, code is the 3-bit button state. Payload is:
+            //   "XXXXX YYYYY [-]WWW"
+            // Decimal-encoded absolute X 0-32765, Y 0-32765, relative wheel
+            // -127 to +127.
             if (!mouse) debug("xkb ignore mouse event\n");
             uint16_t X, Y;
             int8_t W = 0;
             int n;
-            int r = sscanf(s+1, "%hu %hu %n %hhd %n", &X, &Y, &n, &W, &n);
-            if (r < 2 || r > 3 || X > 32767 || Y > 32767 || W < -127 || s[n+1]) goto invalid;
+            int r = sscanf(s+1, "%hu %hu %hhd %n", &X, &Y, &W, &n);
+            if (r != 3 || X > 32767 || Y > 32767 || W < -127 || s[n+1]) goto invalid;
             debug("xkb mouse buttons=%c X=%u Y=%u W=%d\n", s[0], X, Y, W);
             write_hid(mouse, (uint8_t []){s[0]-'0', X & 255, X >> 8, Y & 255, Y >> 8, W}, 6); // little endian!
         }
