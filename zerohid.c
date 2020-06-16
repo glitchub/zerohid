@@ -1,6 +1,24 @@
-// Read key events from stdin and write corresponding keyboard reports to the
-// specified OTG HID device. Events are either straight ASCII or hex-encoded X
-// keys.
+// MIT License
+//
+// Copyright (c) 2020 Rich Leggitt
+//
+// Permission is hereby granted, free of charge, to any person obtaining a copy
+// of this software and associated documentation files (the "Software"), to deal
+// in the Software without restriction, including without limitation the rights
+// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+// copies of the Software, and to permit persons to whom the Software is
+// furnished to do so, subject to the following conditions:
+//
+// The above copyright notice and this permission notice shall be included in all
+// copies or substantial portions of the Software.
+//
+// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+// FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+// AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+// LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+// OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+// SOFTWARE.
 
 #define usage() die("\
 Usage:\n\
@@ -387,7 +405,7 @@ int main(int argc, char *argv[])
 {
     int mode = 0;            // 0 = xkb with shift to ascii, 1 = xkb only, 2 = ascii
 
-    while(true) switch(getopt(argc, argv, ":adD:s:xz:"))
+    while(true) switch(getopt(argc, argv, ":adx"))
     {
         case 'a': mode = 2; break;
         case 'd': dodebug = true; break;

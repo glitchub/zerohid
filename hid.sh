@@ -1,5 +1,27 @@
 #!/bin/bash -eu
 
+# MIT License
+#
+# Copyright (c) 2020 Rich Leggitt
+#
+# Permission is hereby granted, free of charge, to any person obtaining a copy
+# of this software and associated documentation files (the "Software"), to deal
+# in the Software without restriction, including without limitation the rights
+# to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+# copies of the Software, and to permit persons to whom the Software is
+# furnished to do so, subject to the following conditions:
+#
+# The above copyright notice and this permission notice shall be included in all
+# copies or substantial portions of the Software.
+#
+# THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+# IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+# FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+# AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+# LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+# OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+# SOFTWARE.
+
 die() { echo "$*" >&2; exit 1; }
 
 usage() { die "\
@@ -33,9 +55,9 @@ esac; done
 
 
 # Keyboard report descriptor, a report is 8 bytes:
-#   Mod Zero K1 K2 K3 K4 K5 K6
-# Where mod is 8 modifier key bits and Kx is a pressed HID key code (up to 6 at
-# once)
+#   M 0 K1 K2 K3 K4 K5 K6
+# Where 'M' is 8-bit modifier key state, '0' is literal 0, and 'Kx' are up to 6
+# pressed HID key codes (unused slots are 0).
 keyboard=(
     05 01        # USAGE_PAGE (Generic Desktop)
     09 06        # USAGE (Keyboard)
@@ -51,15 +73,6 @@ keyboard=(
     95 01        #     REPORT_COUNT (1)
     75 08        #     REPORT_SIZE (8)
     81 03        #     INPUT (Cnst,Var,Abs)
-#   95 05        #     REPORT_COUNT (5)
-#   75 01        #     REPORT_SIZE (1)
-#   05 08        #     USAGE_PAGE (LEDs)
-#   19 01        #     USAGE_MINIMUM (Num Lock)
-#   29 05        #     USAGE_MAXIMUM (Kana)
-#   91 02        #     OUTPUT (Data,Var,Abs)
-#   95 01        #     REPORT_COUNT (1)
-#   75 03        #     REPORT_SIZE (3)
-#   91 03        #     OUTPUT (Cnst,Var,Abs)
     95 06        #     REPORT_COUNT (6)
     75 08        #     REPORT_SIZE (8)
     15 00        #     LOGICAL_MINIMUM (0)
@@ -71,7 +84,10 @@ keyboard=(
     c0           # END_COLLECTION
 )
 
-# Mouse report descriptor
+# Mouse report descriptor, a report is 6 bytes:
+#   B XL XH YL YH W
+# Where 'B' is 3-bit button state, 'X' and 'Y' are absolute position 0-32767
+# (little-endian), 'W' is relative wheel position -127 to 127.
 mouse=(
     05 01        # USAGE_PAGE (Generic Desktop)
     09 02        # USAGE (Mouse)
