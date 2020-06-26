@@ -529,7 +529,7 @@ int main(int argc, char *argv[])
         {
             // Mouse event, code is the 3-bit button state. Payload is:
             //   "XXXXX YYYYY [-]WWW"
-            // Decimal-encoded absolute X 0-32765, Y 0-32765, relative wheel
+            // Decimal-encoded absolute X 0-32767, Y 0-32767, relative wheel
             // -127 to +127.
             if (!mouse) debug("xkb ignore mouse event\n");
             uint16_t X, Y;

@@ -1,6 +1,10 @@
 [Unit]
 Description=Zerohid
+After=local-fs.target
+DefaultDependencies=no
+
 [Service]
 ExecStart=/root/zerohid/zerohid.sh
+
 [Install]
 WantedBy=multi-user.target

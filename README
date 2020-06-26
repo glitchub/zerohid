@@ -134,8 +134,8 @@ keyboard). The Pi is powered by the target.
 DO NOT use the PC that is running the terminal emulator as the target system or
 you'll end up with a recursive keyboard spiral of death.
 
-In the terminal emulator, you should see kernel messages as Pi boots and after
-about 20 seconds you'll see:
+In the terminal emulator, within about 30 seconds after power is applied you
+should see:
 
     Starting zerohid in ascii mode
 

@@ -8,15 +8,13 @@ die() { echo "$*" >&2; exit 1; }
 # Config options:
 
   # If "ascii", convert plain ASCII characters to HID scan codes.
-  # If "xkb", convert X key codes to HID scan codes.
-  # Otherwise, start in xkb mode but revert to ascii if an empty line is received.
+  # If "xkb", convert X key codes to HID scan codes (for use with vnccon).
   mode=ascii
 
   # If "yes", write debug info to the serial port.
   debug=yes
 
   # If "yes", also support 3-button mouse in xkb mode
-  # XXX not implemented yet
   mouse=no
 
 # Devices of interest
@@ -25,6 +23,7 @@ hidk=/dev/hidg0
 hidm=/dev/hidg1
 
 [[ -e $serial ]] || die "No device $serial"
+stty 115200 cs8 -cstopb -parenb -ixon < $serial
 
 cmd=${0%/*}/hid.sh
 [[ $mouse == yes ]] && cmd+=" -m"
