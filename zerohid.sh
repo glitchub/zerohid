@@ -8,7 +8,8 @@ die() { echo "$*" >&2; exit 1; }
 # Config options:
 
   # If "ascii", convert plain ASCII characters to HID scan codes.
-  # If "xkb", convert X key codes to HID scan codes (for use with vnccon).
+  # If "xkb", convert X key codes to HID scan codes.
+  # Otherwise, start in xkb mode but revert to ascii if an empty line is received.
   mode=ascii
 
   # If "yes", write debug info to the serial port.
